@@ -1,7 +1,7 @@
-FROM python:3.8
+FROM python:3.9
 
 # Setup environment
-RUN  cp /usr/local/bin/pip3.8 /usr/local/bin/pip3  # reenable pip3
+RUN  cp /usr/local/bin/pip3.9 /usr/local/bin/pip3  # reenable pip3
 RUN pip3 install --upgrade pip
 WORKDIR /usr/src/app
 

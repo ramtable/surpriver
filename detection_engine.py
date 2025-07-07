@@ -19,11 +19,31 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 from data_loader import DataEngine
 import warnings
+import base64
+import smtplib
+from email.message import EmailMessage
+from google.oauth2.credentials import Credentials
+import google.auth.transport.requests
+
+CLIENT_ID = os.environ['CLIENT_ID']
+CLIENT_SECRET = os.environ['CLIENT_SECRET']
+REFRESH_TOKEN = os.environ['REFRESH_TOKEN']
+EMAIL_FROM = os.environ['EMAIL_FROM']
+EMAIL_TO = os.environ['EMAIL_TO']
+
+# Get new access token
+creds = Credentials(
+    None,
+    refresh_token=REFRESH_TOKEN,
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET
+)
 
 warnings.filterwarnings("ignore")
 
 # Styling for plots
-plt.style.use('seaborn-white')
+plt.style.use("seaborn-v0_8")
 plt.rc('grid', linestyle="dotted", color='#a0a0a0')
 plt.rcParams['axes.edgecolor'] = "#04383F"
 
@@ -82,8 +102,8 @@ class ArgChecker:
 			print("You want to test but the future bars are less than 2. That does not give us enough data to test the model properly. Please use a value larger than 2.\nExiting now...")
 			exit()
 		
-		if output_format not in ["CLI", "JSON"]:
-			print("Please choose CLI or JSON for the output format field. Default is CLI.")
+		if output_format not in ["CLI", "JSON", "EMAIL"]:
+			print("Please choose CLI or JSON or EMAIL for the output format field. Default is CLI.")
 			exit()
 		if not path.exists(directory_path + f'/stocks/{stock_list}'):
 			print("The stocks list file must exist in the stocks directory")
@@ -268,8 +288,48 @@ class Surpriver:
 		if self.OUTPUT_FORMAT == "JSON":
 			self.store_results(results)
 
+		if self.OUTPUT_FORMAT == "EMAIL":
+			self.send_email(results)
+
 		if self.IS_TEST == 1:
 			self.calculate_future_stats(predictions_with_output_data)
+
+	def send_email(self, results):
+
+		creds.refresh(google.auth.transport.requests.Request())
+
+		# Generate OAuth2 string
+		def generate_oauth2_string(username, access_token):
+		    auth_string = f"user={username}\1auth=Bearer {access_token}\1\1"
+		    return base64.b64encode(auth_string.encode()).decode()
+
+		access_token = creds.token
+		auth_string = generate_oauth2_string(EMAIL_FROM, access_token)
+
+		# Prepare email
+		msg = EmailMessage()
+		msg['Subject'] = 'Test Email from Docker via Gmail OAuth2'
+		msg['From'] = EMAIL_FROM
+		msg['To'] = EMAIL_TO
+
+		results_string  = ''
+
+		for item in results:
+			for key, value in item.items():
+				results_string +=f"{key}, {value}\n"
+			results_string +=f"\n----\n"  # Separator between items
+
+		msg.set_content(results_string)
+
+		# Send via Gmail SMTP
+		smtp = smtplib.SMTP('smtp.gmail.com', 587)
+		smtp.starttls()
+		smtp.docmd('AUTH', 'XOAUTH2 ' + auth_string)
+		smtp.send_message(msg)
+		smtp.quit()
+
+		print("Email sent")
+
 
 	def store_results(self, results):
 		"""
