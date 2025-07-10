@@ -24,6 +24,7 @@ import smtplib
 from email.message import EmailMessage
 from google.oauth2.credentials import Credentials
 import google.auth.transport.requests
+import asyncio
 
 CLIENT_ID = os.environ['CLIENT_ID']
 CLIENT_SECRET = os.environ['CLIENT_SECRET']
@@ -108,9 +109,10 @@ class ArgChecker:
 		if not path.exists(directory_path + f'/stocks/{stock_list}'):
 			print("The stocks list file must exist in the stocks directory")
 			exit()
-		if data_source not in ['binance', 'yahoo_finance']:
+		if data_source not in ['binance', 'yahoo_finance', 'ibgate', 'tws']:
 			print("Data source must be a valid and supported service.")
 			exit()
+
 
 class Surpriver:
 	def __init__(self):
@@ -300,8 +302,8 @@ class Surpriver:
 
 		# Generate OAuth2 string
 		def generate_oauth2_string(username, access_token):
-		    auth_string = f"user={username}\1auth=Bearer {access_token}\1\1"
-		    return base64.b64encode(auth_string.encode()).decode()
+			auth_string = f"user={username}\1auth=Bearer {access_token}\1\1"
+			return base64.b64encode(auth_string.encode()).decode()
 
 		access_token = creds.token
 		auth_string = generate_oauth2_string(EMAIL_FROM, access_token)

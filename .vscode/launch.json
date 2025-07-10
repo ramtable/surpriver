@@ -1,0 +1,46 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File with my args tws",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "--top_n", "25",
+                "--min_volume", "5000000",
+                "--data_granularity_minutes", "60",
+                "--history_to_use", "14",
+                "--is_load_from_dictionary", "0",
+                "--data_dictionary_path", "'dictionaries/data_dict.npy'",
+                "--is_save_dictionary", "1",
+                "--is_test", "0",
+                "--future_bars", "0",
+                "--data_source", "tws"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Current File with my args ibgate",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "--top_n", "25",
+                "--min_volume", "5000000",
+                "--data_granularity_minutes", "60",
+                "--history_to_use", "14",
+                "--is_load_from_dictionary", "0",
+                "--data_dictionary_path", "'dictionaries/data_dict.npy'",
+                "--is_save_dictionary", "1",
+                "--is_test", "0",
+                "--future_bars", "0",
+                "--data_source", "ibgate"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
