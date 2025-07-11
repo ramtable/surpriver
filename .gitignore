@@ -2,6 +2,7 @@ docker-compose.yml
 dictionaries/*
 !dictionaries/readme.txt
 !dictionaries/sample_dict.npy
+yfinance/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -191,7 +192,11 @@ cython_debug/
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 #  and can be added to the global gitignore or merged into this file. However, if you prefer, 
 #  you could uncomment the following to ignore the entire vscode folder
+<<<<<<< HEAD
 .vscode/
+=======
+# .vscode/
+>>>>>>> af905a3fbbfa47c695af7c10cead493e07eef8d1
 
 # Ruff stuff:
 .ruff_cache/

@@ -300,8 +300,13 @@ class Surpriver:
 
 		# Generate OAuth2 string
 		def generate_oauth2_string(username, access_token):
+<<<<<<< HEAD
 		    auth_string = f"user={username}\1auth=Bearer {access_token}\1\1"
 		    return base64.b64encode(auth_string.encode()).decode()
+=======
+			auth_string = f"user={username}\1auth=Bearer {access_token}\1\1"
+			return base64.b64encode(auth_string.encode()).decode()
+>>>>>>> af905a3fbbfa47c695af7c10cead493e07eef8d1
 
 		access_token = creds.token
 		auth_string = generate_oauth2_string(EMAIL_FROM, access_token)
