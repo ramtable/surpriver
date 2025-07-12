@@ -1,5 +1,6 @@
  # Basic libraries
 import os
+from ib_insync import IB
 import ta
 import sys
 import json
@@ -24,7 +25,6 @@ import smtplib
 from email.message import EmailMessage
 from google.oauth2.credentials import Credentials
 import google.auth.transport.requests
-import asyncio
 
 CLIENT_ID = os.environ['CLIENT_ID']
 CLIENT_SECRET = os.environ['CLIENT_SECRET']
@@ -99,10 +99,10 @@ class ArgChecker:
 			print("You can only choose the following values for 'data_granularity_minutes' argument -> %s\nExiting now..." % granularity_constraints_list_string)
 			exit()
 
-		if is_test == 1 and future_bars < 2:
+		if is_test == 1: # and future_bars < 2:
 			print("You want to test but the future bars are less than 2. That does not give us enough data to test the model properly. Please use a value larger than 2.\nExiting now...")
-			exit()
-		
+			#exit()
+
 		if output_format not in ["CLI", "JSON", "EMAIL"]:
 			print("Please choose CLI or JSON or EMAIL for the output format field. Default is CLI.")
 			exit()
@@ -130,6 +130,7 @@ class Surpriver:
 		self.OUTPUT_FORMAT = output_format
 		self.STOCK_LIST = stock_list
 		self.DATA_SOURCE = data_source
+		self.ib = IB()
 
 		# Create data engine
 		self.dataEngine = DataEngine(self.HISTORY_TO_USE, self.DATA_GRANULARITY_MINUTES, 
@@ -138,9 +139,9 @@ class Surpriver:
 							self.IS_TEST, self.FUTURE_BARS_FOR_TESTING,
 							self.VOLATILITY_FILTER,
 							self.STOCK_LIST,
-							self.DATA_SOURCE)
+							self.DATA_SOURCE,
+							self.ib)
 		
-
 	def is_nan(self, object):
 		"""
 		Checks if a value is null. 
@@ -212,7 +213,6 @@ class Surpriver:
 		"""
 		Main function that does everything
 		"""
-
 		# Gather data for all stocks
 		if self.IS_LOAD_FROM_DICTIONARY == 0:
 			features, historical_price_info, future_prices, symbol_names = self.dataEngine.collect_data_for_all_tickers()
@@ -229,6 +229,12 @@ class Surpriver:
 		predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
 		predictions_with_output_data = list(sorted(predictions_with_output_data))
 
+		self.printPredictions(self, predictions_with_output_data)
+
+	def printPredictions(self, predictions_with_output_data):
+		"""
+		Prints the top predictions
+		"""
 		#Results object for storing results in JSON format
 		results = []
 
@@ -295,6 +301,89 @@ class Surpriver:
 
 		if self.IS_TEST == 1:
 			self.calculate_future_stats(predictions_with_output_data)
+
+	async def find_anomalies_async(self):
+		"""
+		Asynchronous version of the find_anomalies function
+		"""
+		print("Running asynchronous anomaly detection...")
+
+		# Gather data for all stocks
+		if self.IS_LOAD_FROM_DICTIONARY == 0:
+			features, historical_price_info, future_prices, symbol_names = await self.dataEngine.collect_data_for_all_tickers_async()
+		else:
+			# Load data from dictionary
+			features, historical_price_info, future_prices, symbol_names = self.dataEngine.load_data_from_dictionary()
+
+		# Find anomalous stocks using the Isolation Forest model. Read more about the model at -> https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
+		detector = IsolationForest(n_estimators = 100, random_state = 0)
+		detector.fit(features)
+		predictions = detector.decision_function(features)
+
+		# Print top predictions with some statistics
+		predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
+		predictions_with_output_data = list(sorted(predictions_with_output_data))
+
+		results = []
+
+		for item in predictions_with_output_data[:self.TOP_PREDICTIONS_TO_PRINT]:
+			prediction, symbol, historical_price, future_price = item
+
+			if self.IS_TEST == 1 and len(future_price) < 5:
+				print("No future data is present. Please make sure that you ran the prior command with is_test enabled or disable that command now. Exiting now...")
+				exit()
+
+			latest_date, today_volume, average_vol_last_five_days, average_vol_last_twenty_days = self.calculate_volume_changes(historical_price)
+			volatility_vol_last_five_days, volatility_vol_last_twenty_days, _ = self.calculate_recent_volatility(historical_price)
+			if average_vol_last_five_days == None or volatility_vol_last_five_days == None:
+				continue
+
+			if self.IS_TEST == 0:
+				if self.OUTPUT_FORMAT == "CLI":
+					print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\n----------------------" % 
+												(latest_date, symbol, prediction,
+												today_volume, average_vol_last_five_days, average_vol_last_twenty_days,
+												volatility_vol_last_five_days, volatility_vol_last_twenty_days))
+
+					results.append({
+						'latest_date' : latest_date,
+						'Symbol' : symbol,
+						'Anomaly Score' : prediction,
+						'Today Volume' : today_volume,
+						'Average Volume 5d' : average_vol_last_five_days,
+						'Average Volume 20d' : average_vol_last_twenty_days,
+						'Volatility 5bars' : volatility_vol_last_five_days,
+						'Volatility 20bars' : volatility_vol_last_twenty_days
+					})
+			else:
+				# Testing so show what happened in the future
+				future_abs_sum_percentage_change, _ = self.calculate_future_performance(future_price)
+
+				if self.OUTPUT_FORMAT == "CLI":
+					print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\nFuture Absolute Sum Price Changes: %.2f\n----------------------" % 
+																	(latest_date, symbol, prediction,
+																	today_volume, average_vol_last_five_days, average_vol_last_twenty_days,
+																	volatility_vol_last_five_days, volatility_vol_last_twenty_days,
+																	future_abs_sum_percentage_change))
+				results.append({
+					'latest_date' : latest_date,
+					'Symbol' : symbol,
+					'Anomaly Score' : prediction,
+					'Today Volume' : today_volume,
+					'Average Volume 5d' : average_vol_last_five_days,
+					'Average Volume 20d' : average_vol_last_twenty_days,
+					'Volatility 5bars' : volatility_vol_last_five_days,
+					'Volatility 20bars' : volatility_vol_last_twenty_days,
+					'Future Absolute Sum Price Changes' : future_abs_sum_percentage_change
+				})
+		if self.OUTPUT_FORMAT == "JSON":
+			self.store_results(results)
+
+		if self.OUTPUT_FORMAT == "EMAIL":
+			self.send_email(results)
+
+		if self.IS_TEST == 1:
+			self.calculate_future_stats(predictions_with_output_data)								
 
 	def send_email(self, results):
 
@@ -416,4 +505,8 @@ argumentChecker = ArgChecker()
 supriver = Surpriver()
 
 # Generate predictions
-supriver.find_anomalies()
+
+if data_source == 'ibgate' or data_source == 'tws':
+	supriver.ib.run(supriver.find_anomalies_async())
+else:
+	supriver.find_anomalies()

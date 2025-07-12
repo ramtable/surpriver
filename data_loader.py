@@ -24,12 +24,17 @@ from dotenv import load_dotenv
 from ib_insync import *
 import numpy as np
 import traceback
+import asyncio
+import aiohttp
 
 load_dotenv()
 warnings.filterwarnings("ignore")
 
+semaphore = asyncio.Semaphore(8)  # Only x active request at a time
+REQUEST_INTERVAL = 2  # seconds between requests
+
 class DataEngine():
-    def __init__(self, history_to_use, data_granularity_minutes, is_save_dict, is_load_dict, dict_path, min_volume_filter, is_test, future_bars_for_testing, volatility_filter, stocks_list, data_source):
+    def __init__(self, history_to_use, data_granularity_minutes, is_save_dict, is_load_dict, dict_path, min_volume_filter, is_test, future_bars_for_testing, volatility_filter, stocks_list, data_source, ib):
         print("Data engine has been initialized...")
         self.DATA_GRANULARITY_MINUTES = data_granularity_minutes
         self.IS_SAVE_DICT = is_save_dict
@@ -40,15 +45,17 @@ class DataEngine():
         self.IS_TEST = is_test
         self.VOLATILITY_THRESHOLD = volatility_filter
         self.DATA_SOURCE = data_source
+        self.ib = ib
+
+        if ib is None:
+            self.ib = IB()
 
         #ibapi init
         if data_source =='ibgate':
             self.clientId = random.randint(10000, 99999)
-            self.ib = IB()
             self.ib.connect('127.0.0.1', 4001, self.clientId, readonly=True)
         elif data_source == 'tws':
             self.clientId = random.randint(10000, 99999)
-            self.ib = IB()
             self.ib.connect('127.0.0.1', 7496, self.clientId, readonly=True)
 
         # Stocks list
@@ -93,7 +100,7 @@ class DataEngine():
         counter_keys = list(counter.keys())
         frequent_key = counter_keys[0]
         return frequent_key
-
+    
     def get_data(self, symbol):
         """
         Get stock data.
@@ -126,49 +133,7 @@ class DataEngine():
                 stock_prices['Low'] = stock_prices['Low'].astype(float)
                 stock_prices['Close'] = stock_prices['Close'].astype(float)
                 stock_prices['Volume'] = stock_prices['Volume'].astype(float)
-            elif (self.DATA_SOURCE == 'ibgate') or (self.DATA_SOURCE == 'tws'):
-                if(self.DATA_GRANULARITY_MINUTES == 60):
-                    interval = '1h'
-                else:
-                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m"
-                contract = Stock(symbol)
-                contract.exchange = 'SMART'
-                contract.currency = 'USD'
-                ''' 
-                details = self.ib.reqContractDetails(contract)
-                if not details:
-                    #f"Contract details not found for {symbol}.")
-                    return [], [], True
-                '''
-                # Request historical data
-                bars = self.ib.reqHistoricalData(contract, endDateTime="", durationStr='60 D',
-                                                barSizeSetting='1 hour',
-                                                whatToShow='TRADES',
-                                                useRTH=True,
-                                                formatDate=1)
-
-                # convert to pandas dataframe (pandas needs to be installed):
-                stock_prices = util.df(bars)
-                # df.info()
-                
-                # ensure that stock prices contains some data, otherwise the pandas operations below could fail
-                if stock_prices is None or stock_prices.empty:
-                    return [], [], True
-
-                # print("covert")
-                # convert list to pandas dataframe
-                #stock_prices = pd.DataFrame(stock_prices, columns=['date', 'open', 'high', 'low', 'close',
-                #                             'volume', 'average'])
-                stock_prices['date'] = stock_prices['date'].dt.tz_convert('America/New_York')
-                stock_prices['open'] = stock_prices['open'].astype(float)
-                stock_prices['high'] = stock_prices['high'].astype(float)
-                stock_prices['low'] = stock_prices['low'].astype(float)
-                stock_prices['close'] = stock_prices['close'].astype(float)
-                stock_prices['volume'] = stock_prices['volume'].astype(float)
-
-                stock_prices = stock_prices.rename(columns={'date': 'Datetime', 'open': 'Open', 'high': 'High',
-                                                            'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
-                
+               
             # get stock prices from yahoo finance
             else:
                 stock_prices = yf.download(
@@ -206,11 +171,90 @@ class DataEngine():
             if len(stock_prices.values.tolist()) == 0:
                 return [], [], True
         except Exception as e: 
-            print(e)
-            traceback.print_exc()
+            # print(e)
+            # traceback.print_exc()
             return [], [], True
 
         return historical_prices, future_prices_list, False
+
+    async def get_data_async(self, symbol, session):
+        """
+        Get stock data.
+        """
+
+        # Find period
+        if self.DATA_GRANULARITY_MINUTES == 1:
+            period = "7 D"
+        else:
+            period = "30 D"
+
+        try:
+            if(self.DATA_GRANULARITY_MINUTES == 60):
+                interval = '1 hour'
+            else:
+                interval = str(self.DATA_GRANULARITY_MINUTES) + " mins"
+            contract = Stock(symbol)
+            contract.exchange = 'SMART'
+            contract.currency = 'USD'
+
+            # Request historical data
+            bars = await self.ib.reqHistoricalDataAsync(contract, endDateTime="", durationStr=period,
+                                            barSizeSetting='1 hour',
+                                            whatToShow='TRADES',
+                                            useRTH=True,
+                                            formatDate=1)
+
+            stock_prices = util.df(bars)
+            
+            # ensure that stock prices contains some data, otherwise the pandas operations below could fail
+            if stock_prices is None or stock_prices.empty:
+                return symbol, [], [], True
+
+            stock_prices['date'] = stock_prices['date'].dt.tz_convert('America/New_York')
+            stock_prices['open'] = stock_prices['open'].astype(float)
+            stock_prices['high'] = stock_prices['high'].astype(float)
+            stock_prices['low'] = stock_prices['low'].astype(float)
+            stock_prices['close'] = stock_prices['close'].astype(float)
+            stock_prices['volume'] = stock_prices['volume'].astype(float)
+
+            stock_prices = stock_prices.rename(columns={'date': 'Datetime', 'open': 'Open', 'high': 'High',
+                                                        'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+            
+        
+            stock_prices = stock_prices.reset_index()
+            stock_prices = stock_prices[['Datetime','Open', 'High', 'Low', 'Close', 'Volume']]
+            data_length = len(stock_prices.values.tolist())
+            self.stock_data_length.append(data_length)
+
+            # After getting some data, ignore partial data based on number of data samples
+            if len(self.stock_data_length) > 5:
+                most_frequent_key = self.get_most_frequent_key(self.stock_data_length)
+                if data_length != most_frequent_key:
+                    return symbol, [], [], True
+
+            if self.IS_TEST == 1:
+                stock_prices_list = stock_prices.values.tolist()
+                stock_prices_list = stock_prices_list[1:]  # For some reason, yfinance gives some 0 values in the first index
+                future_prices_list = stock_prices_list[-(self.FUTURE_FOR_TESTING + 1):]
+                historical_prices = stock_prices_list[:-self.FUTURE_FOR_TESTING]
+                historical_prices = pd.DataFrame(historical_prices)
+                historical_prices.columns = ['Datetime','Open', 'High', 'Low', 'Close', 'Volume']
+            else:
+                # No testing
+                stock_prices_list = stock_prices.values.tolist()
+                stock_prices_list = stock_prices_list[1:]
+                historical_prices = pd.DataFrame(stock_prices_list)
+                historical_prices.columns = ['Datetime','Open', 'High', 'Low', 'Close', 'Volume']
+                future_prices_list = []
+
+            if len(stock_prices.values.tolist()) == 0:
+                return symbol, [], [], True
+        except Exception as e: 
+            print(e)
+            traceback.print_exc()
+            return symbol, [], [], True
+
+        return symbol, historical_prices, future_prices_list, False
 
     def calculate_volatility(self, stock_price_data):
         CLOSE_PRICE_INDEX = 4
@@ -277,6 +321,70 @@ class DataEngine():
 
         return features, historical_price_info, future_price_info, symbol_names
 
+    async def collect_data_for_all_tickers_async(self):
+        print("Loading data for all stocks (async)...")
+
+        features = []
+        symbol_names = []
+        historical_price_info = []
+        future_price_info = []
+        async with aiohttp.ClientSession() as session:
+            tasks = [
+                self.throttled_fetch(symbol, session) for symbol in self.stocks_list
+            ]
+
+        results = await asyncio.gather(*tasks)
+
+        try:
+            for result in results:
+                if result is None:
+                    continue
+
+                symbol = result[0]
+                stock_price_data = result[1]
+                future_prices = result[2]
+                not_found = result[3]
+
+                if not_found:
+                    continue
+
+                volatility = self.calculate_volatility(stock_price_data)
+
+                if volatility < self.VOLATILITY_THRESHOLD:
+                    continue
+
+                features_dictionary = self.taEngine.get_technical_indicators(stock_price_data)
+                feature_list = self.taEngine.get_features(features_dictionary)
+
+                if np.isnan(feature_list).any():
+                    continue
+
+                avg_vol = np.mean(stock_price_data["Volume"].tail(30))
+                if avg_vol < self.VOLUME_FILTER:
+                    continue
+
+                self.features_dictionary_for_all_symbols[symbol] = {
+                    "features": features_dictionary,
+                    "current_prices": stock_price_data,
+                    "future_prices": future_prices
+                }
+
+                # Saving
+                features.append(feature_list)
+                symbol_names.append(symbol)
+                historical_price_info.append(stock_price_data)
+                future_price_info.append(future_prices)
+
+        except Exception as e:
+            print(f"[ERROR] {symbol}: {e}")
+            return None, None, None, None
+
+        features, historical_price_info, future_price_info, symbol_names = self.remove_bad_data(
+                features, historical_price_info, future_price_info, symbol_names)
+
+        return features, historical_price_info, future_price_info, symbol_names
+
+
     def load_data_from_dictionary(self):
         # Load data from dictionary
         print("Loading data from dictionary")
@@ -325,3 +433,10 @@ class DataEngine():
                 filtered_future_prices.append(future_price_info[i])
 
         return filtered_features, filtered_historical_price, filtered_future_prices, filtered_symbols
+
+    async def throttled_fetch(self, symbol, session):
+        async with semaphore:
+            print(f"[{symbol}] Requesting at", time.strftime("%X"))
+            symbol, stock_price_data, future_prices, not_found = await self.get_data_async(symbol, session)  # your IB async fetch
+            await asyncio.sleep(REQUEST_INTERVAL)  # Enforce spacing
+            return symbol, stock_price_data, future_prices, not_found 
