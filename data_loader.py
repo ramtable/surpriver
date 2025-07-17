@@ -25,7 +25,7 @@ import aiohttp
 load_dotenv()
 warnings.filterwarnings("ignore")
 
-semaphore = asyncio.Semaphore(8)  # Only x active request at a time
+semaphore = asyncio.Semaphore(2)  # Only x active request at a time
 REQUEST_INTERVAL = 2  # seconds between requests
 
 IB_ADDRESS = os.environ.get('IB_ADDRESS', '127.0.0.1')
@@ -192,18 +192,14 @@ class DataEngine():
         if self.DATA_GRANULARITY_MINUTES == 1:
             period = "7 D"
             barSizeSetting = '1 hour'
-        elif self.CUP_N_HANDLE < 1440:
+        elif self.DATA_GRANULARITY_MINUTES < 1440:
             period = "30 D"
             barSizeSetting = '1 hour'
         else:
-            period = "5 Y"
+            period = "1 Y"
             barSizeSetting = '1 day'
 
         try:
-            if(self.DATA_GRANULARITY_MINUTES == 60):
-                interval = '1 hour'
-            else:
-                interval = str(self.DATA_GRANULARITY_MINUTES) + " mins"
             contract = Stock(symbol)
             contract.exchange = 'SMART'
             contract.currency = 'USD'
