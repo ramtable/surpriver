@@ -45,4 +45,4 @@ threadpoolctl==3.6.0
 tqdm==4.48.2
 trove_classifiers==2025.5.9.12
 xx==3.3.2
-yfinance==0.2.55
+yfinance==0.2.65

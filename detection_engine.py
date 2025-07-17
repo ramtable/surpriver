@@ -51,7 +51,7 @@ plt.rcParams['axes.edgecolor'] = "#04383F"
 # Argument parsing
 import argparse
 argParser = argparse.ArgumentParser()
-argParser.add_argument("--top_n", type=int, default = 25, help="How many top predictions do you want to print")
+argParser.add_argument("--top_n", type=int, default = 10, help="How many top predictions do you want to print")
 argParser.add_argument("--min_volume", type=int, default = 5000, help="Minimum volume filter. Stocks with average volume of less than this value will be ignored")
 argParser.add_argument("--history_to_use", type=int, default = 7, help="How many bars of 1 hour do you want to use for the anomaly detection model.")
 argParser.add_argument("--is_load_from_dictionary", type=int, default = 0, help="Whether to load data from dictionary or get it from data source.")
@@ -64,6 +64,7 @@ argParser.add_argument("--volatility_filter", type=float, default = 0.05, help="
 argParser.add_argument("--output_format", type=str, default = "CLI", help="What format to use for printing/storing results. Can be CLI or JSON.")
 argParser.add_argument("--stock_list", type=str, default = "stocks.txt", help="What is the name of the file in the stocks directory which contains the stocks you wish to predict.")
 argParser.add_argument("--data_source", type=str, default = "yahoo_finance", help="The name of the data engine to use.")
+argParser.add_argument("--cupnhandle", type=str, default = "false", help="Output cupnhandle detection instead of anomaly detection. Set to true or false. Default is false.")
 
 args = argParser.parse_args()
 top_n = args.top_n
@@ -79,6 +80,7 @@ volatility_filter = args.volatility_filter
 output_format = args.output_format.upper()
 stock_list = args.stock_list
 data_source = args.data_source
+cup_n_handle = args.cupnhandle
 
 """
 Sample run:
@@ -130,6 +132,7 @@ class Surpriver:
 		self.OUTPUT_FORMAT = output_format
 		self.STOCK_LIST = stock_list
 		self.DATA_SOURCE = data_source
+		self.CUP_N_HANDLE = cup_n_handle
 		self.ib = IB()
 
 		# Create data engine
@@ -140,8 +143,9 @@ class Surpriver:
 							self.VOLATILITY_FILTER,
 							self.STOCK_LIST,
 							self.DATA_SOURCE,
-							self.ib)
-		
+							self.ib,
+							self.CUP_N_HANDLE)
+
 	def is_nan(self, object):
 		"""
 		Checks if a value is null. 
@@ -190,7 +194,6 @@ class Surpriver:
 		average_vol_last_five_days = np.mean([volume_by_date_dictionary[date] for date in all_dates[1:6]])
 		average_vol_last_twenty_days = np.mean([volume_by_date_dictionary[date] for date in all_dates[1:20]])
 
-		
 		return latest_data_point, self.parse_large_values(today_volume), self.parse_large_values(average_vol_last_five_days), self.parse_large_values(average_vol_last_twenty_days)
 
 	def calculate_recent_volatility(self, historical_price):
@@ -220,16 +223,55 @@ class Surpriver:
 			# Load data from dictionary
 			features, historical_price_info, future_prices, symbol_names = self.dataEngine.load_data_from_dictionary()
 		
-		# Find anomalous stocks using the Isolation Forest model. Read more about the model at -> https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
-		detector = IsolationForest(n_estimators = 100, random_state = 0)
-		detector.fit(features)
-		predictions = detector.decision_function(features)
-		
-		# Print top predictions with some statistics
-		predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
-		predictions_with_output_data = list(sorted(predictions_with_output_data))
+		if self.CUP_N_HANDLE == "true":
+			cupnhandle_results = []
 
-		self.printPredictions(self, predictions_with_output_data)
+			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
+
+			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
+				symbol, index, cupnhandle_candidates = item
+
+				if not cupnhandle_candidates:
+					continue  # Skip symbols with no patterns
+
+				print(f"\nSymbol: {symbol}")
+			
+				df = historical_price_info[index]
+				for idx, (a, b, c, d, e) in enumerate(cupnhandle_candidates):
+					# abc = cup, d = handle, e = breakout
+					a_date = df.loc[a, 'Datetime']
+					b_date = df.loc[b, 'Datetime']
+					c_date = df.loc[c, 'Datetime']
+					d_date = df.loc[d, 'Datetime']
+					e_date = df.loc[e, 'Datetime']
+
+					a_price = df.loc[a, 'Close']
+					b_price = df.loc[b, 'Close']
+					c_price = df.loc[c, 'Close']
+					d_price = df.loc[d, 'Close']
+					e_price = df.loc[e, 'Close']
+
+					print(f"  Cup and Handle #{idx + 1}:")
+					print(f"    Cup Left  - {a_date} @ {a_price:.2f}")
+					print(f"    Cup Bottom- {b_date} @ {b_price:.2f}")
+					print(f"    Cup Right - {c_date} @ {c_price:.2f}")	
+					print(f"    Handle - {d_date} @ {d_price:.2f}")	
+					print(f"    Breakout - {e_date} @ {e_price:.2f}")		
+		else:
+			if features is None or len(features) == 0:
+				print("No features were found. Please check your data source and try again.")
+				return
+
+			# Find anomalous stocks using the Isolation Forest model. Read more about the model at -> https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
+			detector = IsolationForest(n_estimators = 100, random_state = 0)
+			detector.fit(features)
+			predictions = detector.decision_function(features)
+			
+			# Print top predictions with some statistics
+			predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
+			predictions_with_output_data = list(sorted(predictions_with_output_data))
+
+			self.printPredictions(self, predictions_with_output_data)
 
 	def printPredictions(self, predictions_with_output_data):
 		"""
@@ -246,7 +288,7 @@ class Surpriver:
 			if self.IS_TEST == 1 and len(future_price) < 5:
 				print("No future data is present. Please make sure that you ran the prior command with is_test enabled or disable that command now. Exiting now...")
 				exit()
-
+			
 			latest_date, today_volume, average_vol_last_five_days, average_vol_last_twenty_days = self.calculate_volume_changes(historical_price)
 			volatility_vol_last_five_days, volatility_vol_last_twenty_days, _ = self.calculate_recent_volatility(historical_price)
 			if average_vol_last_five_days == None or volatility_vol_last_five_days == None:
@@ -315,46 +357,80 @@ class Surpriver:
 			# Load data from dictionary
 			features, historical_price_info, future_prices, symbol_names = self.dataEngine.load_data_from_dictionary()
 
-		# Find anomalous stocks using the Isolation Forest model. Read more about the model at -> https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
-		detector = IsolationForest(n_estimators = 100, random_state = 0)
-		detector.fit(features)
-		predictions = detector.decision_function(features)
+		if self.CUP_N_HANDLE == "true":
+			cupnhandle_results = []
 
-		# Print top predictions with some statistics
-		predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
-		predictions_with_output_data = list(sorted(predictions_with_output_data))
+			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
 
-		results = []
+			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
+				symbol, index, cupnhandle_candidates = item
 
-		for item in predictions_with_output_data[:self.TOP_PREDICTIONS_TO_PRINT]:
-			prediction, symbol, historical_price, future_price = item
+				if not cupnhandle_candidates:
+					continue  # Skip symbols with no patterns
 
-			if self.IS_TEST == 1 and len(future_price) < 5:
-				print("No future data is present. Please make sure that you ran the prior command with is_test enabled or disable that command now. Exiting now...")
-				exit()
+				print(f"\nSymbol: {symbol}")
+			
+				df = historical_price_info[index]
+				for idx, (a, b, c, d, e) in enumerate(cupnhandle_candidates):
+					# abc = cup, d = handle, e = breakout
+					a_date = df.loc[a, 'Datetime']
+					b_date = df.loc[b, 'Datetime']
+					c_date = df.loc[c, 'Datetime']
+					d_date = df.loc[d, 'Datetime']
+					e_date = df.loc[e, 'Datetime']
 
-			latest_date, today_volume, average_vol_last_five_days, average_vol_last_twenty_days = self.calculate_volume_changes(historical_price)
-			volatility_vol_last_five_days, volatility_vol_last_twenty_days, _ = self.calculate_recent_volatility(historical_price)
-			if average_vol_last_five_days == None or volatility_vol_last_five_days == None:
-				continue
+					a_price = df.loc[a, 'Close']
+					b_price = df.loc[b, 'Close']
+					c_price = df.loc[c, 'Close']
+					d_price = df.loc[d, 'Close']
+					e_price = df.loc[e, 'Close']
 
-			if self.IS_TEST == 0:
-				if self.OUTPUT_FORMAT == "CLI":
-					print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\n----------------------" % 
-												(latest_date, symbol, prediction,
-												today_volume, average_vol_last_five_days, average_vol_last_twenty_days,
-												volatility_vol_last_five_days, volatility_vol_last_twenty_days))
+					print(f"  Cup and Handle #{idx + 1}:")
+					print(f"    Cup Left  - {a_date} @ {a_price:.2f}")
+					print(f"    Cup Bottom- {b_date} @ {b_price:.2f}")
+					print(f"    Cup Right - {c_date} @ {c_price:.2f}")	
+					print(f"    Handle - {d_date} @ {d_price:.2f}")	
+					print(f"    Breakout - {e_date} @ {e_price:.2f}")			
+		else:
+			# Find anomalous stocks using the Isolation Forest model. Read more about the model at -> https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
+			detector = IsolationForest(n_estimators = 100, random_state = 0)
+			detector.fit(features)
+			predictions = detector.decision_function(features)
 
-					results.append({
-						'latest_date' : latest_date,
-						'Symbol' : symbol,
-						'Anomaly Score' : prediction,
-						'Today Volume' : today_volume,
-						'Average Volume 5d' : average_vol_last_five_days,
-						'Average Volume 20d' : average_vol_last_twenty_days,
-						'Volatility 5bars' : volatility_vol_last_five_days,
-						'Volatility 20bars' : volatility_vol_last_twenty_days
-					})
+			# Print top predictions with some statistics
+			predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
+			predictions_with_output_data = list(sorted(predictions_with_output_data))
+
+			results = []
+			for item in predictions_with_output_data[:self.TOP_PREDICTIONS_TO_PRINT]:
+				prediction, symbol, historical_price, future_price = item
+
+				if self.IS_TEST == 1 and len(future_price) < 5:
+					print("No future data is present. Please make sure that you ran the prior command with is_test enabled or disable that command now. Exiting now...")
+					exit()
+
+				latest_date, today_volume, average_vol_last_five_days, average_vol_last_twenty_days = self.calculate_volume_changes(historical_price)
+				volatility_vol_last_five_days, volatility_vol_last_twenty_days, _ = self.calculate_recent_volatility(historical_price)
+				if average_vol_last_five_days == None or volatility_vol_last_five_days == None:
+					continue
+
+				if self.IS_TEST == 0:
+					if self.OUTPUT_FORMAT == "CLI":
+						print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\n----------------------" % 
+													(latest_date, symbol, prediction,
+													today_volume, average_vol_last_five_days, average_vol_last_twenty_days,
+													volatility_vol_last_five_days, volatility_vol_last_twenty_days))
+
+						results.append({
+							'latest_date' : latest_date,
+							'Symbol' : symbol,
+							'Anomaly Score' : prediction,
+							'Today Volume' : today_volume,
+							'Average Volume 5d' : average_vol_last_five_days,
+							'Average Volume 20d' : average_vol_last_twenty_days,
+							'Volatility 5bars' : volatility_vol_last_five_days,
+							'Volatility 20bars' : volatility_vol_last_twenty_days
+						})
 			else:
 				# Testing so show what happened in the future
 				future_abs_sum_percentage_change, _ = self.calculate_future_performance(future_price)
@@ -383,7 +459,7 @@ class Surpriver:
 			self.send_email(results)
 
 		if self.IS_TEST == 1:
-			self.calculate_future_stats(predictions_with_output_data)								
+			self.calculate_future_stats(predictions_with_output_data)	
 
 	def send_email(self, results):
 
@@ -505,7 +581,6 @@ argumentChecker = ArgChecker()
 supriver = Surpriver()
 
 # Generate predictions
-
 if data_source == 'ibgate' or data_source == 'tws':
 	supriver.ib.run(supriver.find_anomalies_async())
 else:

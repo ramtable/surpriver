@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "args": [
-                "--top_n", "25",
+                "--top_n", "10",
                 "--min_volume", "5000000",
                 "--data_granularity_minutes", "60",
                 "--history_to_use", "14",
@@ -19,7 +19,8 @@
                 "--is_save_dictionary", "1",
                 "--is_test", "0",
                 "--future_bars", "0",
-                "--data_source", "yahoo_finance"
+                "--data_source", "yahoo_finance",
+                "--cupnhandle", "true"
             ],
             "console": "integratedTerminal"
         },
@@ -38,7 +39,8 @@
                 "--is_save_dictionary", "1",
                 "--is_test", "0",
                 "--future_bars", "0",
-                "--data_source", "tws"
+                "--data_source", "tws",
+                "--cupnhandle", "true"
             ],
             "console": "integratedTerminal"
         },
