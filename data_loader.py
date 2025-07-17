@@ -28,6 +28,8 @@ warnings.filterwarnings("ignore")
 semaphore = asyncio.Semaphore(8)  # Only x active request at a time
 REQUEST_INTERVAL = 2  # seconds between requests
 
+IB_ADDRESS = os.environ.get('IB_ADDRESS', '127.0.0.1')
+
 class DataEngine():
     def __init__(self, history_to_use, data_granularity_minutes, is_save_dict, is_load_dict, dict_path, min_volume_filter, is_test, future_bars_for_testing, volatility_filter, stocks_list, data_source, ib, cup_n_handle):
         print("Data engine has been initialized...")
@@ -49,10 +51,10 @@ class DataEngine():
         #ibapi init
         if data_source =='ibgate':
             self.clientId = random.randint(10000, 99999)
-            self.ib.connect('127.0.0.1', 4001, self.clientId, readonly=True)
+            self.ib.connect(IB_ADDRESS, 4001, self.clientId, readonly=True)
         elif data_source == 'tws':
             self.clientId = random.randint(10000, 99999)
-            self.ib.connect('127.0.0.1', 7496, self.clientId, readonly=True)
+            self.ib.connect(IB_ADDRESS, 7496, self.clientId, readonly=True)
 
         # Stocks list
         self.directory_path = str(os.path.dirname(os.path.abspath(__file__)))
