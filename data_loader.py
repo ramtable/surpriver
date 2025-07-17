@@ -1,13 +1,7 @@
 # Basic libraries
 import os
-import ta
-import sys
-import json
-import math
 import time
-import pickle
 import random
-import requests
 import collections
 import numpy as np
 from os import walk
@@ -16,6 +10,7 @@ import yfinance as yf
 import datetime as dt
 from tqdm import tqdm
 from scipy.stats import linregress
+from scipy.signal import argrelextrema
 from datetime import datetime, timedelta
 from feature_generator import TAEngine
 import warnings
@@ -34,7 +29,7 @@ semaphore = asyncio.Semaphore(8)  # Only x active request at a time
 REQUEST_INTERVAL = 2  # seconds between requests
 
 class DataEngine():
-    def __init__(self, history_to_use, data_granularity_minutes, is_save_dict, is_load_dict, dict_path, min_volume_filter, is_test, future_bars_for_testing, volatility_filter, stocks_list, data_source, ib):
+    def __init__(self, history_to_use, data_granularity_minutes, is_save_dict, is_load_dict, dict_path, min_volume_filter, is_test, future_bars_for_testing, volatility_filter, stocks_list, data_source, ib, cup_n_handle):
         print("Data engine has been initialized...")
         self.DATA_GRANULARITY_MINUTES = data_granularity_minutes
         self.IS_SAVE_DICT = is_save_dict
@@ -46,6 +41,7 @@ class DataEngine():
         self.VOLATILITY_THRESHOLD = volatility_filter
         self.DATA_SOURCE = data_source
         self.ib = ib
+        self.CUP_N_HANDLE = cup_n_handle
 
         if ib is None:
             self.ib = IB()
@@ -94,6 +90,7 @@ class DataEngine():
         stocks_list = list(sorted(set(stocks_list)))
         print("Total number of stocks: %d" % len(stocks_list))
         self.stocks_list = stocks_list
+        #self.stocks_list = list(filter(lambda x: x == "NVDA", stocks_list))
 
     def get_most_frequent_key(self, input_list):
         counter = collections.Counter(input_list)
@@ -107,11 +104,6 @@ class DataEngine():
         """
 
         # Find period
-        if self.DATA_GRANULARITY_MINUTES == 1:
-            period = "7d"
-        else:
-            period = "30d"
-
         try:
             # get crytpo price from Binance
             if(self.DATA_SOURCE == 'binance'):
@@ -136,12 +128,24 @@ class DataEngine():
                
             # get stock prices from yahoo finance
             else:
+
+                if self.DATA_GRANULARITY_MINUTES == 1:
+                    period = "7d"
+                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m",
+                elif self.CUP_N_HANDLE:
+                    period = "5y"
+                    interval = "1d"
+                else:
+                    period = "30d"
+                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m",
+
                 stock_prices = yf.download(
                                 tickers = symbol,
                                 period = period,
-                                interval = str(self.DATA_GRANULARITY_MINUTES) + "m",
+                                interval = interval,
                                 auto_adjust = False,
                                 progress=False)
+                
             stock_prices = stock_prices.reset_index()
             stock_prices = stock_prices[['Datetime','Open', 'High', 'Low', 'Close', 'Volume']]
             data_length = len(stock_prices.values.tolist())
@@ -185,8 +189,13 @@ class DataEngine():
         # Find period
         if self.DATA_GRANULARITY_MINUTES == 1:
             period = "7 D"
-        else:
+            barSizeSetting = '1 hour'
+        elif self.CUP_N_HANDLE < 1440:
             period = "30 D"
+            barSizeSetting = '1 hour'
+        else:
+            period = "5 Y"
+            barSizeSetting = '1 day'
 
         try:
             if(self.DATA_GRANULARITY_MINUTES == 60):
@@ -199,7 +208,7 @@ class DataEngine():
 
             # Request historical data
             bars = await self.ib.reqHistoricalDataAsync(contract, endDateTime="", durationStr=period,
-                                            barSizeSetting='1 hour',
+                                            barSizeSetting=barSizeSetting,
                                             whatToShow='TRADES',
                                             useRTH=True,
                                             formatDate=1)
@@ -210,7 +219,7 @@ class DataEngine():
             if stock_prices is None or stock_prices.empty:
                 return symbol, [], [], True
 
-            stock_prices['date'] = stock_prices['date'].dt.tz_convert('America/New_York')
+            stock_prices['date'] = pd.to_datetime(stock_prices['date'])
             stock_prices['open'] = stock_prices['open'].astype(float)
             stock_prices['high'] = stock_prices['high'].astype(float)
             stock_prices['low'] = stock_prices['low'].astype(float)
@@ -412,6 +421,158 @@ class DataEngine():
         features, historical_price_info, future_price_info, symbol_names = self.remove_bad_data(features, historical_price_info, future_price_info, symbol_names)
 
         return features, historical_price_info, future_price_info, symbol_names
+    
+    def detect_cup_n_handle(self, symbol_names, historical_price_info):
+        """
+        Detect cup and handle patterns in the historical price data.
+        """
+        cup_n_handle_results = []
+
+        # Default distance thresholds if not provided.
+        distance_thresholds = {
+                            'a_b': 10,  # Threshold for distance between 'a' and 'b'.
+                            'b_c': 10,  # Threshold for distance between 'b' and 'c'.
+                            'c_d': 10,  # Threshold for distance between 'c' and 'd'.
+                            'd_e': 10   # Threshold for distance between 'd' and 'e'.
+                        }
+
+        # Default price thresholds (tuned for ~3 trading days of 5-minute samples ≈ 234 points)
+        # These values are intentionally lenient to allow pattern detection in short, noisy sequences.
+        # For longer datasets or real-world applications, adjust these thresholds upward
+        # to better reflect meaningful movements and reduce false positives.     
+        price_thresholds = {
+                            'a_b': 0.005,  # drop from a to b.
+                            'b_c': 0.005,  # rise from b to c.
+                            'a_c': 0.005,   # diff from a to c.
+                            'c_d': 0.005,  # drop from c to d.
+                            'b_d': 0.005,   # rise from b to d.
+                            'd_e': 0.005   # rise from d to e.
+                        }
+        for index in range(len(symbol_names)):
+            symbol = symbol_names[index]
+            df = historical_price_info[index]
+
+            # Detect cup and handle pattern
+            try:
+                cups = []
+
+                df = df.dropna().reset_index(drop=True)
+
+                prices = df['Close'].values
+                min_idx = argrelextrema(prices, np.less, order=5)[0]
+                max_idx = argrelextrema(prices, np.greater, order=5)[0]
+
+                for i in min_idx:
+                    left_max = max([j for j in max_idx if j < i], default=None)
+                    right_max = min([j for j in max_idx if j > i], default=None)
+
+                    if left_max is None or right_max is None:
+                        continue
+
+                    left = prices[left_max]
+                    right = prices[right_max]
+                    bottom = prices[i]
+
+                    # Check shape: symmetry and depth
+                    if abs(left - right) / max(left, right) < 0.1:  # shoulders roughly equal
+                        if bottom < left and bottom < right:
+                            depth = min(left, right) - bottom
+                            if depth / bottom > 0.05:  # cup depth ≥5%
+                                cups.append((left_max, i, right_max))
+                            else:
+                                continue
+
+                    valid_patterns = []
+                        
+                    # Iterate over the maxima and minima lists.
+                    for i in range(len(max_idx) - 4):  # We need at least 5 points: a, b, c, d, e.
+                        a = max_idx[i]
+
+                        # TODO:
+                        # Optimize this brute-force search by limiting the search window size between each pair (a-b, b-c, c-d, d-e).
+                        # This can reduce the complexity from O(m^5) to something closer to O(m^2–m^3) by avoiding unnecessary combinations.
+                        # For example:
+                        #   - Look for b within a sliding window after a.
+                        #   - Limit c to points close to a in price and within b+N.
+                        #   - Use early exit (return True) once a valid pattern is found.
+
+                        # Check for the corresponding 'b' (minima after 'a').
+                        for b in min_idx:
+                            if b > a and self.distance_is_valid(a, b, distance_thresholds, 'a_b'):
+                                # Check the price difference condition immediately.
+                                if not self.price_difference_is_valid(a, b, None, None, None, prices, price_thresholds):
+                                    continue  # Skip if price difference is invalid.
+
+                                # Now find the next 'c' (maxima after 'b').
+                                for c in max_idx:
+                                    if c > b and self.distance_is_valid(b, c, distance_thresholds, 'b_c'):
+                                        # Check the price difference condition immediately.
+                                        if not self.price_difference_is_valid(a, b, c, None, None, prices, price_thresholds):
+                                            continue  # Skip if price difference is invalid.
+
+                                        # Now find the next 'd' (minima after 'c').
+                                        for d in min_idx:
+                                            if d > c and self.distance_is_valid(c, d, distance_thresholds, 'c_d'):
+                                                # Check the price difference condition immediately.
+                                                if not self.price_difference_is_valid(a, b, c, d, None, prices, price_thresholds):
+                                                    continue  # Skip if price difference is invalid.
+
+                                                # Finally, check for 'e' (maxima after 'd').
+                                                for e in max_idx:
+                                                    if e > d and self.distance_is_valid(d, e, distance_thresholds, 'd_e'):
+                                                        # Now check if all price difference conditions are met.
+                                                        if self.price_difference_is_valid(a, b, c, d, e, prices, price_thresholds):
+                                                            valid_patterns.append((a, b, c, d, e))
+
+                if valid_patterns is not None and len(valid_patterns) > 0:
+                    cup_n_handle_results.append((symbol, index, valid_patterns))
+            except Exception as e:
+                print(f"Error detecting cup and handle for {symbol}: {e}")
+                continue
+
+        return cup_n_handle_results
+    
+    def distance_is_valid(self, a, b, distance_thresholds, pair_name):
+        """
+        Check if the distance between two points is valid, given a distance threshold.
+        pair_name specifies which pair is being checked: 'a_b', 'b_c', 'c_d', 'd_e'.
+        """
+        distance = abs(a - b)  # Distance between indices.
+        if pair_name in distance_thresholds:
+            return distance >= distance_thresholds[pair_name] and distance <= distance_thresholds[pair_name] * 2  # Compare against the threshold.
+        return False
+    
+    def price_difference_is_valid(self, a, b, c, d, e, prices, price_thresholds):
+        """    
+        Applies constraints to validate shape of the cup and handle based on price deltas.
+        """
+        valid = True
+
+        # Check price difference between a and b (b should be at least price_thresholds['a_b'] % lower than a).
+        if a is not None and b is not None and prices[a] - prices[b] <= price_thresholds['a_b'] * prices[a]:
+            valid = False
+
+        # Check price difference between b and c (c should be at least price_thresholds['b_c'] % higher than b).
+        if b is not None and c is not None and prices[c] - prices[b] <= price_thresholds['b_c'] * prices[b]:
+            valid = False
+
+        # Check price difference between a and c (c should be at most price_thresholds['a_c'] % higher/lower than a).
+        if a is not None and c is not None and abs(prices[c] - prices[a]) >= price_thresholds['a_c'] * prices[a]:
+            valid = False
+
+        # Check price difference between c and d (d should be at least price_thresholds['c_d'] % lower than c).
+        if c is not None and d is not None and prices[c] - prices[d] <= price_thresholds['c_d'] * prices[c]:
+            valid = False
+
+        # Check price difference between b and d (d should be at least price_thresholds['b_d'] % lower than b).
+        if b is not None and d is not None and prices[d] - prices[b] <= price_thresholds['b_d'] * prices[b]:
+            valid = False
+
+        # Check price difference between d and e (e should be at least price_thresholds['d_e'] % higher than d).
+        if d is not None and e is not None and prices[e] - prices[d] <= price_thresholds['d_e'] * prices[d]:
+            valid = False
+
+        return valid
 
     def remove_bad_data(self, features, historical_price_info, future_price_info, symbol_names):
         """
