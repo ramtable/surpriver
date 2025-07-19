@@ -64,7 +64,7 @@ argParser.add_argument("--volatility_filter", type=float, default = 0.05, help="
 argParser.add_argument("--output_format", type=str, default = "CLI", help="What format to use for printing/storing results. Can be CLI or JSON.")
 argParser.add_argument("--stock_list", type=str, default = "stocks.txt", help="What is the name of the file in the stocks directory which contains the stocks you wish to predict.")
 argParser.add_argument("--data_source", type=str, default = "yahoo_finance", help="The name of the data engine to use.")
-argParser.add_argument("--cupnhandle", type=str, default = "false", help="Output cupnhandle detection instead of anomaly detection. Set to true or false. Default is false.")
+argParser.add_argument("--cupnhandle", action='store_true', help="Output cupnhandle detection instead of anomaly detection.")
 
 args = argParser.parse_args()
 top_n = args.top_n
@@ -223,9 +223,9 @@ class Surpriver:
 			# Load data from dictionary
 			features, historical_price_info, future_prices, symbol_names = self.dataEngine.load_data_from_dictionary()
 		
-		if self.CUP_N_HANDLE == "true":
+		if self.CUP_N_HANDLE:
 			cupnhandle_results = []
-
+			print("Detecting Cup and Handle patterns...")
 			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
 
 			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
@@ -357,9 +357,9 @@ class Surpriver:
 			# Load data from dictionary
 			features, historical_price_info, future_prices, symbol_names = self.dataEngine.load_data_from_dictionary()
 
-		if self.CUP_N_HANDLE == "true":
+		if self.CUP_N_HANDLE:
 			cupnhandle_results = []
-
+			print("Detecting Cup and Handle patterns...")
 			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
 
 			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
