@@ -133,13 +133,13 @@ class DataEngine():
 
                 if self.DATA_GRANULARITY_MINUTES == 1:
                     period = "7d"
-                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m",
+                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m"
                 elif self.CUP_N_HANDLE:
                     period = "5y"
                     interval = "1d"
                 else:
                     period = "30d"
-                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m",
+                    interval = str(self.DATA_GRANULARITY_MINUTES) + "m"
 
                 stock_prices = yf.download(
                                 tickers = symbol,
