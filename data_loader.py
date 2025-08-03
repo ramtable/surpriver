@@ -340,7 +340,11 @@ class DataEngine():
                 self.throttled_fetch(symbol, session) for symbol in self.stocks_list
             ]
 
-        results = await asyncio.gather(*tasks)
+        try:
+            results = await asyncio.gather(*tasks)
+        except asyncio.CancelledError as e:
+            print(f"[ERROR] {symbol}: {e}")
+            return None, None, None, None
 
         try:
             for result in results:
