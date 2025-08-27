@@ -19,8 +19,7 @@
                 "--is_save_dictionary", "1",
                 "--is_test", "0",
                 "--future_bars", "0",
-                "--data_source", "yahoo_finance",
-                "--cupnhandle", "true"
+                "--data_source", "yahoo_finance"
             ],
             "console": "integratedTerminal"
         },

@@ -1,3 +1,4 @@
+ARG TARGETPLATFORM
 FROM python:3.9
 
 # Setup environment
