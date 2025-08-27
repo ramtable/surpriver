@@ -46,3 +46,4 @@ tqdm==4.48.2
 trove_classifiers==2025.5.9.12
 xx==3.3.2
 yfinance==0.2.65
+pillow>=10.0.1 # not directly required, pinned by Snyk to avoid a vulnerability
