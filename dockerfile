@@ -1,31 +1,34 @@
-# Stage 1: Build Tailscale
-FROM alpine:3.19 as tailscale
-RUN apk add --no-cache curl ca-certificates && \
-    curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.66.4_amd64.tgz | tar xz -C /tmp && \
-    mkdir -p /out && \
-    cp /tmp/tailscale* /out/ && \
-    cp /tmp/tailscaled /out/
+# Stage 1: Copy Tailscale binaries from official image
+FROM docker.io/tailscale/tailscale:stable AS tailscale
 
 # Stage 2: Main Python app
-FROM python:3.9
+FROM python:3.9-slim
 
-# Copy Tailscale binaries from the previous stage
-COPY --from=tailscale /out/tailscale /usr/local/bin/tailscale
-COPY --from=tailscale /out/tailscaled /usr/local/bin/tailscaled
+# Install runtime deps
+RUN apt-get update && apt-get install -y \
+    iproute2 iputils-ping curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Tailscale binaries into PATH
+COPY --from=tailscale /usr/local/bin/tailscaled /usr/local/bin/tailscaled
+COPY --from=tailscale /usr/local/bin/tailscale /usr/local/bin/tailscale
+RUN mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
 
 # Setup environment
-RUN  cp /usr/local/bin/pip3.9 /usr/local/bin/pip3  # reenable pip3
-RUN pip3 install --upgrade pip
-WORKDIR /usr/src/app
+WORKDIR /app
+RUN cp /usr/local/bin/pip3.9 /usr/local/bin/pip3 && pip3 install --upgrade pip
 
-# Install requirements
-COPY requirements.txt ./
+# Install Python deps
+COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Copy your app code (including entry_point.sh)
 COPY . .
 
-VOLUME ["/usr/src/app"]
+# Ensure entry_point.sh is executable
+RUN chmod +x /app/entry_point.sh
 
-# Start Tailscale and your app (adjust as needed)
-ENTRYPOINT [ "sh", "/usr/src/app/entry_point.sh" ]
-CMD ["/usr/src/app/entry_point.sh"]
+VOLUME ["/app"]
+
+ENTRYPOINT ["sh", "/app/entry_point.sh"]
+CMD ["/app/entry_point.sh"]
