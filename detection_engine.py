@@ -431,17 +431,17 @@ class Surpriver:
 							'Volatility 5bars' : volatility_vol_last_five_days,
 							'Volatility 20bars' : volatility_vol_last_twenty_days
 						})
-			else:
-				# Testing so show what happened in the future
-				future_abs_sum_percentage_change, _ = self.calculate_future_performance(future_price)
+				else:
+					# Testing so show what happened in the future
+					future_abs_sum_percentage_change, _ = self.calculate_future_performance(future_price)
 
-				if self.OUTPUT_FORMAT == "CLI":
-					print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\nFuture Absolute Sum Price Changes: %.2f\n----------------------" % 
+					if self.OUTPUT_FORMAT == "CLI":
+						print("Last Bar Time: %s\nSymbol: %s\nAnomaly Score: %.3f\nToday Volume: %s\nAverage Volume 5d: %s\nAverage Volume 20d: %s\nVolatility 5bars: %.3f\nVolatility 20bars: %.3f\nFuture Absolute Sum Price Changes: %.2f\n----------------------" % 
 																	(latest_date, symbol, prediction,
 																	today_volume, average_vol_last_five_days, average_vol_last_twenty_days,
 																	volatility_vol_last_five_days, volatility_vol_last_twenty_days,
 																	future_abs_sum_percentage_change))
-				results.append({
+					results.append({
 					'latest_date' : latest_date,
 					'Symbol' : symbol,
 					'Anomaly Score' : prediction,
@@ -451,7 +451,8 @@ class Surpriver:
 					'Volatility 5bars' : volatility_vol_last_five_days,
 					'Volatility 20bars' : volatility_vol_last_twenty_days,
 					'Future Absolute Sum Price Changes' : future_abs_sum_percentage_change
-				})
+					})
+					
 		if self.OUTPUT_FORMAT == "JSON":
 			self.store_results(results)
 
