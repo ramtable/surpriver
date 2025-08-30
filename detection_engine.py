@@ -1,7 +1,5 @@
  # Basic libraries
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
-import threading
 from ib_insync import IB
 import ta
 import sys
@@ -578,27 +576,6 @@ class Surpriver:
 
 # Check arguments
 argumentChecker = ArgChecker()
-
-# --- HTTP Handler ---
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/healthz':
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"ok")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-# --- Start HTTP server in a background thread ---
-def run_server():
-    PORT = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
-    print(f"HTTP server running on port {PORT}")
-    server.serve_forever()
-
-threading.Thread(target=run_server, daemon=True).start()
 
 # Create surpriver instance
 supriver = Surpriver()

@@ -8,7 +8,7 @@
             "name": "Python: Current File with my args yahoo",
             "type": "python",
             "request": "launch",
-            "program": "detection_engine.py",
+            "program": "${file}",
             "args": [
                 "--top_n", "10",
                 "--min_volume", "5000000",
@@ -28,7 +28,7 @@
             "name": "Python: Current File with my args tws",
             "type": "python",
             "request": "launch",
-            "program": "detection_engine.py",
+            "program": "${file}",
             "args": [
                 "--top_n", "25",
                 "--min_volume", "5000000",
@@ -47,7 +47,7 @@
             "name": "Python: Current File with my args ibgate",
             "type": "python",
             "request": "launch",
-            "program": "detection_engine.py",
+            "program": "${file}",
             "args": [
                 "--top_n", "25",
                 "--min_volume", "5000000",
@@ -66,7 +66,7 @@
             "name": "Python: Current File with my args test",
             "type": "python",
             "request": "launch",
-            "program": "detection_engine.py",
+            "program": "${file}",
             "args": [
                 "--top_n", "25",
                 "--min_volume", "5000000",
