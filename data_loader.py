@@ -74,7 +74,8 @@ class DataEngine():
         self.stock_data_length = []
         
         # Create an instance of the Binance Client with no api key and no secret (api key and secret not required for the functionality needed for this script)
-        self.binance_client = Binance_Client("","")
+        '''self.binance_client = Binance_Client("","")
+        '''
 
     def tickPrice(self, reqId, tickType, price, attrib):
                 if tickType == 4:  # Last price
