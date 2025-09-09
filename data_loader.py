@@ -21,6 +21,7 @@ import numpy as np
 import traceback
 import asyncio
 import aiohttp
+import futu as ft
 
 load_dotenv()
 warnings.filterwarnings("ignore")
@@ -44,6 +45,7 @@ class DataEngine():
         self.DATA_SOURCE = data_source
         self.ib = ib
         self.CUP_N_HANDLE = cup_n_handle
+        self.quote_ctx = None
 
         if ib is None:
             self.ib = IB()
@@ -55,7 +57,10 @@ class DataEngine():
         elif data_source == 'tws':
             self.clientId = random.randint(10000, 99999)
             self.ib.connect(IB_ADDRESS, 7496, self.clientId, readonly=True)
-
+        elif data_source == 'futu':
+            self.quote_ctx = ft.OpenQuoteContext(host='127.0.0.1', port=11112)
+            stock_type = [ft.SecurityType.STOCK]
+            
         # Stocks list
         self.directory_path = str(os.path.dirname(os.path.abspath(__file__)))
         self.stocks_file_path = self.directory_path + f"/stocks/{stocks_list}"
@@ -108,8 +113,9 @@ class DataEngine():
 
         # Find period
         try:
-            # get crytpo price from Binance
+            # get crytpo price from Binance(Disabled for now)
             if(self.DATA_SOURCE == 'binance'):
+                '''
                 # Binance clients doesn't like 60m as an interval
                 if(self.DATA_GRANULARITY_MINUTES == 60):
                     interval = '1h'
@@ -128,7 +134,22 @@ class DataEngine():
                 stock_prices['Low'] = stock_prices['Low'].astype(float)
                 stock_prices['Close'] = stock_prices['Close'].astype(float)
                 stock_prices['Volume'] = stock_prices['Volume'].astype(float)
-               
+                '''
+
+            elif self.DATA_SOURCE == 'futu':
+                today = datetime.today()
+                pre_day = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+                end_dt = today.strftime('%Y-%m-%d')
+                ret_code, prices, page_req_key = self.quote_ctx.request_history_kline(code=symbol, start=pre_day, end=end_dt)
+                #print(ret_code)
+                if ret_code == 0:
+                    prices = prices.rename(columns={'time_key': 'Datetime', 'open': 'Open', 'high': 'High',
+                                                        'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+                    return prices, [], False
+                else:
+                    print(ret_code)
+                    return [], [], True
+
             # get stock prices from yahoo finance
             else:
 
@@ -179,7 +200,7 @@ class DataEngine():
                 return [], [], True
         except Exception as e: 
             # print(e)
-            # traceback.print_exc()
+            traceback.print_exc()
             return [], [], True
 
         return historical_prices, future_prices_list, False
@@ -287,6 +308,9 @@ class DataEngine():
         for i in tqdm(range(len(self.stocks_list))):
             symbol = self.stocks_list[i]
             try:
+
+                if self.DATA_SOURCE == 'futu':
+                    time.sleep(2.0)
                 stock_price_data, future_prices, not_found = self.get_data(symbol)
                     
                 if not not_found:
@@ -326,7 +350,7 @@ class DataEngine():
 
         # Sometimes, there are some errors in feature generation or price extraction, let us remove that stuff
         features, historical_price_info, future_price_info, symbol_names = self.remove_bad_data(features, historical_price_info, future_price_info, symbol_names)
-
+        self.quote_ctx.close()
         return features, historical_price_info, future_price_info, symbol_names
 
     async def collect_data_for_all_tickers_async(self):

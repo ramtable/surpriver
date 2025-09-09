@@ -111,7 +111,7 @@ class ArgChecker:
 		if not path.exists(directory_path + f'/stocks/{stock_list}'):
 			print("The stocks list file must exist in the stocks directory")
 			exit()
-		if data_source not in ['binance', 'yahoo_finance', 'ibgate', 'tws']:
+		if data_source not in ['binance', 'yahoo_finance', 'ibgate', 'tws', 'futu']:
 			print("Data source must be a valid and supported service.")
 			exit()
 
@@ -271,7 +271,7 @@ class Surpriver:
 			predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
 			predictions_with_output_data = list(sorted(predictions_with_output_data))
 
-			self.printPredictions(self, predictions_with_output_data)
+			self.printPredictions(predictions_with_output_data)
 
 	def printPredictions(self, predictions_with_output_data):
 		"""
