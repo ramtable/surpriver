@@ -96,9 +96,11 @@ class DataEngine():
 
         # Load symbols
         stocks_list = list(sorted(set(stocks_list)))
-        print("Total number of stocks: %d" % len(stocks_list))
         self.stocks_list = stocks_list
+        print("Total number of stocks: %d" % len(stocks_list))
+
         #self.stocks_list = list(filter(lambda x: x == "NVDA", stocks_list))
+        #self.stocks_list = stocks_list[:10]
 
     def get_most_frequent_key(self, input_list):
         counter = collections.Counter(input_list)
@@ -485,6 +487,7 @@ class DataEngine():
                 min_idx = argrelextrema(prices, np.less, order=5)[0]
                 max_idx = argrelextrema(prices, np.greater, order=5)[0]
 
+                valid_patterns = []
                 for i in min_idx:
                     left_max = max([j for j in max_idx if j < i], default=None)
                     right_max = min([j for j in max_idx if j > i], default=None)
@@ -504,8 +507,6 @@ class DataEngine():
                                 cups.append((left_max, i, right_max))
                             else:
                                 continue
-
-                    valid_patterns = []
                         
                     # Iterate over the maxima and minima lists.
                     for i in range(len(max_idx) - 4):  # We need at least 5 points: a, b, c, d, e.

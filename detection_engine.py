@@ -228,6 +228,10 @@ class Surpriver:
 			print("Detecting Cup and Handle patterns...")
 			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
 
+			if not cupnhandle_results or len(cupnhandle_results) == 0:
+				print("No Cup and Handle patterns detected.")
+				return  # Stop further processing if no patterns are found
+			
 			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
 				symbol, index, cupnhandle_candidates = item
 
@@ -361,6 +365,10 @@ class Surpriver:
 			cupnhandle_results = []
 			print("Detecting Cup and Handle patterns...")
 			cupnhandle_results = self.dataEngine.detect_cup_n_handle(symbol_names, historical_price_info)
+
+			if not cupnhandle_results or len(cupnhandle_results) == 0:
+				print("No Cup and Handle patterns detected.")
+				return  # Stop further processing if no patterns are found
 
 			for item in cupnhandle_results[:self.TOP_PREDICTIONS_TO_PRINT]:
 				symbol, index, cupnhandle_candidates = item

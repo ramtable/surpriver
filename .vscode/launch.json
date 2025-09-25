@@ -20,7 +20,7 @@
                 "--is_test", "0",
                 "--future_bars", "0",
                 "--data_source", "yahoo_finance",
-                "--cupnhandle", "true"
+                "--cupnhandle"
             ],
             "console": "integratedTerminal"
         },
@@ -97,7 +97,8 @@
                 "--is_test", "0",
                 "--future_bars", "0",
                 "--stock_list", "futu_stocks.txt",
-                "--data_source", "futu"
+                "--data_source", "futu",
+                "--cupnhandle"
             ],
             "console": "integratedTerminal"
         }
