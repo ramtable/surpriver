@@ -404,7 +404,7 @@ class Surpriver:
 			detector = IsolationForest(n_estimators = 100, random_state = 0)
 			detector.fit(features)
 			predictions = detector.decision_function(features)
-
+			
 			# Print top predictions with some statistics
 			predictions_with_output_data = [[predictions[i], symbol_names[i], historical_price_info[i], future_prices[i]] for i in range(0, len(predictions))]
 			predictions_with_output_data = list(sorted(predictions_with_output_data))

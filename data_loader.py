@@ -82,6 +82,60 @@ class DataEngine():
         '''self.binance_client = Binance_Client("","")
         '''
 
+    def save_dictionary(self, local_only=False):
+        """
+        Save features dictionary to local disk and optionally upload to Google Cloud Storage
+        when IS_SAVE_DICT is enabled. Uses environment variables for GCS configuration:
+          - GCS_BUCKET (required to enable upload)
+          - GCS_PREFIX (optional folder/prefix in bucket)
+          - GCS_BLOB (optional full blob name; overrides prefix logic)
+        Authentication uses Application Default Credentials (ADC).
+        """
+        try:
+            if self.IS_SAVE_DICT != 1:
+                return
+
+            # Ensure directory exists
+            dict_dir = os.path.dirname(self.DICT_PATH)
+            if dict_dir and not os.path.exists(dict_dir):
+                os.makedirs(dict_dir, exist_ok=True)
+
+            # Local save first
+            np.save(self.DICT_PATH, self.features_dictionary_for_all_symbols)
+
+            if local_only:
+                return
+
+            # Optional GCS upload
+            gcs_bucket = os.environ.get('GCS_BUCKET')
+            if not gcs_bucket:
+                return  # No bucket configured; skip cloud upload
+
+            # Determine blob name
+            blob_name = os.environ.get('GCS_BLOB')
+            if not blob_name:
+                prefix = os.environ.get('GCS_PREFIX', '').strip()
+                base = os.path.basename(self.DICT_PATH)
+                if prefix:
+                    blob_name = f"{prefix.rstrip('/')}/{base}"
+                else:
+                    blob_name = base
+
+            try:
+                from google.cloud import storage  # type: ignore
+            except Exception as import_err:
+                print(f"[WARN] google-cloud-storage not installed; skipping GCS upload: {import_err}")
+                return
+
+            client = storage.Client()  # ADC
+            bucket = client.bucket(gcs_bucket)
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(self.DICT_PATH)
+            #print(f"[INFO] Uploaded dictionary to gs://{gcs_bucket}/{blob_name}")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to save/upload dictionary: {e}")
+
     def tickPrice(self, reqId, tickType, price, attrib):
                 if tickType == 4:  # Last price
                     self.latest_prices[reqId] = price
@@ -330,15 +384,7 @@ class DataEngine():
 
                     # Save dictionary after every 100 symbols
                     if len(self.features_dictionary_for_all_symbols) % 100 == 0 and self.IS_SAVE_DICT == 1:
-                        np.save(self.DICT_PATH, self.features_dictionary_for_all_symbols)
-
-                    if np.isnan(feature_list).any() == True:
-                        continue
-
-                    # Check for volume
-                    average_volume_last_30_tickers = np.mean(list(stock_price_data["Volume"])[-30:])
-                    if average_volume_last_30_tickers < self.VOLUME_FILTER:
-                        continue
+                        self.save_dictionary(local_only=True)
 
                     # Add to lists
                     features.append(feature_list)
@@ -353,6 +399,10 @@ class DataEngine():
         # Sometimes, there are some errors in feature generation or price extraction, let us remove that stuff
         features, historical_price_info, future_price_info, symbol_names = self.remove_bad_data(features, historical_price_info, future_price_info, symbol_names)
         self.quote_ctx.close()
+
+        # Final save at end of sync collection
+        if self.IS_SAVE_DICT == 1 and len(self.features_dictionary_for_all_symbols) > 0:
+            self.save_dictionary()
         return features, historical_price_info, future_price_info, symbol_names
 
     async def collect_data_for_all_tickers_async(self):
@@ -367,7 +417,7 @@ class DataEngine():
                 self.throttled_fetch(symbol, session) for symbol in self.stocks_list
             ]
 
-        results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
 
         try:
             for result in results:
@@ -390,19 +440,16 @@ class DataEngine():
                 features_dictionary = self.taEngine.get_technical_indicators(stock_price_data)
                 feature_list = self.taEngine.get_features(features_dictionary)
 
-                if np.isnan(feature_list).any():
-                    continue
-
-                avg_vol = np.mean(stock_price_data["Volume"].tail(30))
-                if avg_vol < self.VOLUME_FILTER:
-                    continue
-
                 self.features_dictionary_for_all_symbols[symbol] = {
                     "features": features_dictionary,
                     "current_prices": stock_price_data,
                     "future_prices": future_prices
                 }
 
+                # Save dictionary after every 100 symbols (mirrors sync behavior)
+                if self.IS_SAVE_DICT == 1 and len(self.features_dictionary_for_all_symbols) % 100 == 0:
+                    self.save_dictionary(local_only=True)
+                    
                 # Saving
                 features.append(feature_list)
                 symbol_names.append(symbol)
@@ -414,7 +461,11 @@ class DataEngine():
             return None, None, None, None
 
         features, historical_price_info, future_price_info, symbol_names = self.remove_bad_data(
-                features, historical_price_info, future_price_info, symbol_names)
+            features, historical_price_info, future_price_info, symbol_names)
+
+        # Final save at the end (in case total < 100 or remainder after last batch)
+        if self.IS_SAVE_DICT == 1 and len(self.features_dictionary_for_all_symbols) > 0:
+            self.save_dictionary()
 
         return features, historical_price_info, future_price_info, symbol_names
 
