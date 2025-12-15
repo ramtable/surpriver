@@ -46,7 +46,7 @@ tqdm==4.48.2
 trove_classifiers==2025.5.9.12
 xx==3.3.2
 yfinance==0.2.65
-fonttools>=4.43.0 # not directly required, pinned by Snyk to avoid a vulnerability
+fonttools>=4.61.0 # not directly required, pinned by Snyk to avoid a vulnerability
 pillow>=10.0.1 # not directly required, pinned by Snyk to avoid a vulnerability
 setuptools>=70.0.0 # pinned by Snyk to avoid a vulnerability via ini2toml, ipython, pythran, etc.
 scrapy==2.11.1 # pinned by Snyk to avoid a vulnerability via xx
