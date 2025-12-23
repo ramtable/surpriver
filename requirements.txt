@@ -9,7 +9,7 @@ dl==0.1.0
 docutils==0.21.2
 ib-insync==0.9.86
 python-dotenv==1.1.1
-filelock==3.18.0
+filelock==3.20.1
 google-auth>=2.40
 google-auth-oauthlib==1.2.2
 HTMLParser==0.0.2
