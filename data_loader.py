@@ -22,6 +22,7 @@ import traceback
 import asyncio
 import aiohttp
 import futu as ft
+import finnhub
 
 load_dotenv()
 warnings.filterwarnings("ignore")
@@ -46,6 +47,7 @@ class DataEngine():
         self.ib = ib
         self.CUP_N_HANDLE = cup_n_handle
         self.quote_ctx = None
+        self.finnhub_client = None
 
         if ib is None:
             self.ib = IB()
@@ -60,6 +62,11 @@ class DataEngine():
         elif data_source == 'futu':
             self.quote_ctx = ft.OpenQuoteContext(host='127.0.0.1', port=11112)
             stock_type = [ft.SecurityType.STOCK]
+        elif data_source == 'finnhub':
+            finnhub_api_key = os.environ.get('FINNHUB_API_KEY')
+            if not finnhub_api_key:
+                raise ValueError("FINNHUB_API_KEY environment variable is required for finnhub data source.")
+            self.finnhub_client = finnhub.Client(api_key=finnhub_api_key)
             
         # Stocks list
         self.directory_path = str(os.path.dirname(os.path.abspath(__file__)))
@@ -161,6 +168,44 @@ class DataEngine():
         counter_keys = list(counter.keys())
         frequent_key = counter_keys[0]
         return frequent_key
+
+    def _finnhub_resolution(self, minutes):
+        if minutes in [1, 5, 15, 30, 60]:
+            return str(minutes)
+        if minutes == 10:
+            return "15"
+        return "60"
+
+    def _fetch_finnhub_prices(self, symbol):
+        now = datetime.utcnow()
+        if self.CUP_N_HANDLE:
+            resolution = "D"
+            start = now - timedelta(days=365 * 5)
+        else:
+            resolution = self._finnhub_resolution(self.DATA_GRANULARITY_MINUTES)
+            days = 7 if self.DATA_GRANULARITY_MINUTES == 1 else 30
+            start = now - timedelta(days=days)
+
+        candles = self.finnhub_client.stock_candles(
+            symbol,
+            resolution,
+            int(start.timestamp()),
+            int(now.timestamp())
+        )
+
+        if not candles or candles.get("s") != "ok" or not candles.get("t"):
+            return None
+
+        stock_prices = pd.DataFrame({
+            "Datetime": pd.to_datetime(candles["t"], unit="s"),
+            "Open": candles["o"],
+            "High": candles["h"],
+            "Low": candles["l"],
+            "Close": candles["c"],
+            "Volume": candles["v"],
+        })
+
+        return stock_prices
     
     def get_data(self, symbol):
         """
@@ -204,6 +249,10 @@ class DataEngine():
                     return prices, [], False
                 else:
                     print(ret_code)
+                    return [], [], True
+            elif self.DATA_SOURCE == 'finnhub':
+                stock_prices = self._fetch_finnhub_prices(symbol)
+                if stock_prices is None or stock_prices.empty:
                     return [], [], True
 
             # get stock prices from yahoo finance

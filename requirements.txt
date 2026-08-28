@@ -52,3 +52,4 @@ setuptools>=70.0.0 # pinned by Snyk to avoid a vulnerability via ini2toml, ipyth
 scrapy==2.11.1 # pinned by Snyk to avoid a vulnerability via xx
 futu-api>=9.4.0
 google-cloud-storage==2.18.2
+finnhub-python>=2.4.27

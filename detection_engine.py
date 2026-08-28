@@ -111,7 +111,7 @@ class ArgChecker:
 		if not path.exists(directory_path + f'/stocks/{stock_list}'):
 			print("The stocks list file must exist in the stocks directory")
 			exit()
-		if data_source not in ['binance', 'yahoo_finance', 'ibgate', 'tws', 'futu']:
+		if data_source not in ['binance', 'yahoo_finance', 'ibgate', 'tws', 'futu', 'finnhub']:
 			print("Data source must be a valid and supported service.")
 			exit()
 

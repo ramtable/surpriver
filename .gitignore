@@ -1,4 +1,5 @@
 docker-compose.yml
+.env
 dictionaries/*
 !dictionaries/readme.txt
 !dictionaries/sample_dict.npy
