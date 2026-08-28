@@ -1,6 +1,0 @@
-{
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-    "python.envFile": "${workspaceFolder}/.env",
-    "snyk.advanced.organization": "09eeaf13-b6fa-4920-9675-be52ee92eca4",
-    "snyk.advanced.autoSelectOrganization": true
-}
