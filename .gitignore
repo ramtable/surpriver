@@ -3,6 +3,7 @@ docker-compose.yml
 dictionaries/*
 !dictionaries/readme.txt
 !dictionaries/sample_dict.npy
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
