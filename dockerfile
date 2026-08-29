@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.14.1
 
 # Setup environment
 RUN  cp /usr/local/bin/pip3.9 /usr/local/bin/pip3  # reenable pip3
